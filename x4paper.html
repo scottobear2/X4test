@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Animated 1-Bit Widget</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
+        body { overscroll-behavior-y: contain; touch-action: none; }
+        .pixel-font { font-family: 'Courier New', Courier, monospace; letter-spacing: -0.5px; }
+        .btn-active { transform: scale(0.95); background-color: #374151; color: white; }
+    </style>
+</head>
+<body class="bg-gray-900 h-screen w-screen overflow-hidden flex flex-col items-center justify-center text-gray-200 select-none">
+
+    <!-- Main Canvas Area -->
+    <div class="relative w-full h-full max-w-[480px] flex items-center justify-center bg-gray-800 shadow-2xl overflow-hidden">
+        <!-- Background Pattern Canvas -->
+        <canvas id="bgCanvas" width="480" height="800" class="absolute inset-0 image-rendering-pixelated w-full h-full object-contain bg-white"></canvas>
+        
+        <!-- User Drawing Layer (Transparent) -->
+        <canvas id="drawCanvas" width="480" height="800" class="absolute inset-0 image-rendering-pixelated w-full h-full object-contain touch-none"></canvas>
+
+        <div id="touchHint" class="absolute top-4 left-0 right-0 text-center pointer-events-none opacity-0 transition-opacity duration-500 z-10">
+            <span class="bg-black/50 px-3 py-1 rounded-full text-xs text-white backdrop-blur-sm">Touch to draw</span>
+        </div>
+    </div>
+
+    <!-- Floating Menu Toggle -->
+    <button id="menuToggle" class="absolute bottom-6 right-6 w-14 h-14 bg-white text-black rounded-full shadow-lg z-50 flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+    </button>
+
+    <!-- Hideable Menu Overlay -->
+    <div id="menuOverlay" class="absolute inset-0 bg-black/80 backdrop-blur-sm z-40 transition-opacity duration-300 opacity-0 pointer-events-none flex flex-col justify-end">
+        <div id="menuPanel" class="bg-gray-900 w-full rounded-t-2xl p-6 transform translate-y-full transition-transform duration-300 max-h-[90vh] overflow-y-auto pb-safe">
+            
+            <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                <h2 class="text-xl font-bold text-white pixel-font">ANIMATED WIDGET</h2>
+                <div class="flex gap-4">
+                    <button id="btnSpeed" class="text-gray-400 hover:text-white font-bold text-xs uppercase border border-gray-600 px-2 rounded">Speed: 1x</button>
+                    <button id="btnPause" class="text-gray-400 hover:text-white font-bold text-xs uppercase border border-gray-600 px-2 rounded">Pause</button>
+                    <button id="closeMenu" class="text-gray-400 hover:text-white p-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pattern Generators -->
+            <div class="space-y-4 mb-6">
+                <label class="text-xs uppercase tracking-wider text-gray-500 font-bold">Live Patterns</label>
+                <div class="grid grid-cols-2 gap-3" id="generatorButtons">
+                    <button data-gen="invaders" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium relative overflow-hidden group">
+                        <span class="relative z-10">Arcade Invaders</span>
+                    </button>
+                    <button data-gen="plasma" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Liquid Plasma</button>
+                    <button data-gen="tenprint" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Scrolling Maze</button>
+                    <button data-gen="checker" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Tunnel Checkers</button>
+                    <button data-gen="noise" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Static Noise</button>
+                    <button data-gen="automata" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Rain Automata</button>
+                    <button data-gen="glitch" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Data Glitch</button>
+                    <button data-gen="dither" class="bg-gray-800 hover:bg-gray-700 py-3 rounded-lg border border-gray-700 transition-all text-sm font-medium">Cycle Dither</button>
+                </div>
+            </div>
+
+            <!-- Text Tool -->
+            <div class="space-y-4 mb-6">
+                <label class="text-xs uppercase tracking-wider text-gray-500 font-bold">Text Stamp</label>
+                <div class="flex gap-2">
+                    <input id="textInput" type="text" placeholder="HELLO" class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 text-white font-mono uppercase focus:outline-none focus:border-white h-12">
+                    <button id="btnText" class="bg-gray-700 hover:bg-gray-600 px-4 rounded-lg font-bold transition-colors h-12">ADD</button>
+                </div>
+            </div>
+
+            <!-- Brush Selection -->
+            <div class="space-y-4 mb-6">
+                <label class="text-xs uppercase tracking-wider text-gray-500 font-bold">Brush Shade</label>
+                <div class="flex justify-between gap-2 p-2 bg-gray-800 rounded-lg" id="brushButtons">
+                    <button data-brush="0" class="w-full h-10 rounded bg-[#000000] border-2 border-transparent focus:border-blue-500"></button>
+                    <button data-brush="1" class="w-full h-10 rounded bg-[#555555] border-2 border-transparent focus:border-blue-500"></button>
+                    <button data-brush="2" class="w-full h-10 rounded bg-[#AAAAAA] border-2 border-transparent focus:border-blue-500"></button>
+                    <button data-brush="3" class="w-full h-10 rounded bg-[#FFFFFF] border-2 border-transparent focus:border-blue-500"></button>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="space-y-3">
+                <button id="btnClear" class="w-full py-3 text-red-400 bg-gray-800 rounded-lg font-bold active:bg-red-900/30 transition-colors">Clear Drawing</button>
+                <button id="btnExport" class="w-full py-4 bg-white text-black rounded-lg font-bold text-lg shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
+                    <span>Create Snapshot</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </button>
+            </div>
+            <div class="h-8"></div>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="exportModal" class="absolute inset-0 bg-gray-900/95 z-50 flex flex-col items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+        <h3 class="text-white font-bold text-lg mb-2">SNAPSHOT CREATED</h3>
+        <p class="text-gray-400 text-xs mb-4 text-center">Long-press image to Save to Photos<br>or click Download for Files app.</p>
+        
+        <div class="relative shadow-2xl border-4 border-white mb-6 max-h-[60vh]">
+            <img id="exportImg" src="" class="max-h-[50vh] w-auto image-rendering-pixelated">
+        </div>
+
+        <div class="flex gap-4 w-full max-w-xs">
+            <button id="btnModalClose" class="flex-1 py-3 bg-gray-700 text-white rounded-lg font-bold">Close</button>
+            <a id="btnModalDownload" class="flex-1 py-3 bg-white text-black rounded-lg font-bold text-center flex items-center justify-center gap-2">
+                Download
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            </a>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-6 bg-green-500 text-black font-bold px-6 py-3 rounded-full shadow-xl transform -translate-y-32 transition-transform duration-300 z-50 pointer-events-none">
+        Action Complete
+    </div>
+
+    <script>
+        (function() {
+            /** CONFIG & STATE **/
+            const W = 480, H = 800;
+            const bgCanvas = document.getElementById('bgCanvas');
+            const drawCanvas = document.getElementById('drawCanvas');
+            const bgCtx = bgCanvas.getContext('2d', { alpha: false });
+            const drawCtx = drawCanvas.getContext('2d');
+            
+            // Optimization: Small canvas for heavy math effects (Plasma)
+            const plasmaCanvas = document.createElement('canvas');
+            plasmaCanvas.width = 60; // 1/8th resolution
+            plasmaCanvas.height = 100;
+            const plasmaCtx = plasmaCanvas.getContext('2d', { alpha: false });
+
+            const PALETTE = ['#000000', '#555555', '#AAAAAA', '#FFFFFF'];
+            
+            let currentBrushIndex = 0;
+            let isDrawing = false;
+            let lastX = 0, lastY = 0;
+            let isPaused = false;
+            let speedMultiplier = 1;
+            let animationId;
+            let mode = 'invaders'; // Default to new invaders
+            let frameCount = 0;
+
+            // Pattern Specific State
+            let state = {
+                t: 0,
+                offsetY: 0,
+                grid: [],
+                automataRow: [],
+                invaderRows: []
+            };
+
+            // Classic 8x8 Sprites (Hex representation)
+            const ALIEN_PRESETS = [
+                // Crab
+                { frame1: [0x18, 0x3C, 0x7E, 0xDB, 0xFF, 0x24, 0x5A, 0xA5], 
+                  frame2: [0x18, 0x3C, 0x7E, 0xDB, 0xFF, 0x24, 0x5A, 0x42] },
+                // Squid
+                { frame1: [0x3C, 0x7E, 0xFF, 0xBD, 0xC3, 0xFF, 0x24, 0x42],
+                  frame2: [0x3C, 0x7E, 0xFF, 0xBD, 0xC3, 0xFF, 0x42, 0x24] },
+                // Octopus
+                { frame1: [0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0xDB, 0x81, 0x42],
+                  frame2: [0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0xDB, 0x42, 0x81] },
+                // Fly
+                { frame1: [0x00, 0x81, 0xC3, 0x7E, 0xFF, 0xBD, 0x81, 0x42],
+                  frame2: [0x00, 0x81, 0xC3, 0x7E, 0xFF, 0xBD, 0x42, 0x81] },
+                // Ghost
+                { frame1: [0x3C, 0x7E, 0xFF, 0xFF, 0xDB, 0xFF, 0xA5, 0x00],
+                  frame2: [0x3C, 0x7E, 0xFF, 0xFF, 0xDB, 0xFF, 0x42, 0x00] }
+            ];
+
+            /** UI ELEMENTS **/
+            const els = {
+                menuToggle: document.getElementById('menuToggle'),
+                menuOverlay: document.getElementById('menuOverlay'),
+                menuPanel: document.getElementById('menuPanel'),
+                closeMenu: document.getElementById('closeMenu'),
+                toast: document.getElementById('toast'),
+                touchHint: document.getElementById('touchHint'),
+                brushBtns: document.getElementById('brushButtons'),
+                genBtns: document.getElementById('generatorButtons'),
+                btnClear: document.getElementById('btnClear'),
+                btnExport: document.getElementById('btnExport'),
+                btnText: document.getElementById('btnText'),
+                textInput: document.getElementById('textInput'),
+                btnPause: document.getElementById('btnPause'),
+                btnSpeed: document.getElementById('btnSpeed'),
+                // Modal Els
+                exportModal: document.getElementById('exportModal'),
+                exportImg: document.getElementById('exportImg'),
+                btnModalClose: document.getElementById('btnModalClose'),
+                btnModalDownload: document.getElementById('btnModalDownload')
+            };
+
+            /** INITIALIZATION **/
+            function init() {
+                // Initial bg fill
+                bgCtx.fillStyle = PALETTE[3];
+                bgCtx.fillRect(0, 0, W, H);
+                
+                // Init automata state
+                state.automataRow = Array(60).fill(0).map(() => Math.floor(Math.random()*4));
+                
+                // Init Invaders state
+                initInvaders();
+
+                setMode('invaders');
+                setupEventListeners();
+                
+                // Start Animation Loop
+                loop();
+
+                setTimeout(() => {
+                    if (els.touchHint) {
+                        els.touchHint.style.opacity = '1';
+                        setTimeout(() => els.touchHint.style.opacity = '0', 3000);
+                    }
+                }, 1000);
+            }
+
+            // --- NEW INVADER LOGIC ---
+            
+            function generateProceduralSprite() {
+                // Generates a symmetrical 8x8 sprite byte array
+                let s1 = [];
+                let s2 = [];
+                for(let i=0; i<8; i++) {
+                    // Generate random 4 bits for left half (0-15)
+                    let v = Math.floor(Math.random() * 16);
+                    
+                    // Rules to make it look like an alien
+                    if (i === 0) v &= 0x3; // Narrow top (clear high bits)
+                    if (i === 1) v |= 0x6; // Wider second row
+                    if (i === 3 || i === 4) v |= 0xF; // Solid middle body
+                    
+                    // Frame 2 Logic (Legs wiggle)
+                    let v2 = v;
+                    if (i >= 6) {
+                        // Invert leg bits for animation
+                        v2 = v ^ 0x5; 
+                    }
+
+                    // Mirror: b3 b2 b1 b0 b0 b1 b2 b3
+                    let b0=v&1, b1=(v>>1)&1, b2=(v>>2)&1, b3=(v>>3)&1;
+                    let full = (b3<<7)|(b2<<6)|(b1<<5)|(b0<<4)|(b0<<3)|(b1<<2)|(b2<<1)|b3;
+                    s1.push(full);
+
+                    let b0_2=v2&1, b1_2=(v2>>1)&1, b2_2=(v2>>2)&1, b3_2=(v2>>3)&1;
+                    let full2 = (b3_2<<7)|(b2_2<<6)|(b1_2<<5)|(b0_2<<4)|(b0_2<<3)|(b1_2<<2)|(b2_2<<1)|b3_2;
+                    s2.push(full2);
+                }
+                return { frame1: s1, frame2: s2 };
+            }
+
+            function initInvaders() {
+                state.invaderRows = [];
+                for(let i=0; i<15; i++) {
+                    state.invaderRows.push(createInvaderRow(i * 60));
+                }
+            }
+
+            function createInvaderRow(y) {
+                let row = { y: y, invaders: [] };
+                // 5 Invaders per row
+                for(let x=0; x<5; x++) {
+                    let spriteObj;
+                    // 50% chance of Classic, 50% Procedural
+                    if (Math.random() > 0.5) {
+                        spriteObj = ALIEN_PRESETS[Math.floor(Math.random() * ALIEN_PRESETS.length)];
+                    } else {
+                        spriteObj = generateProceduralSprite();
+                    }
+                    
+                    row.invaders.push({ 
+                        color: Math.floor(Math.random()*3), // 0-2 (Black/Dark/Light)
+                        sprite: spriteObj
+                    });
+                }
+                return row;
+            }
+
+            function setMode(newMode) {
+                mode = newMode;
+                bgCtx.fillStyle = PALETTE[3];
+                bgCtx.fillRect(0, 0, W, H);
+                state.t = 0;
+                frameCount = 0;
+                
+                if (mode === 'tenprint') {
+                    bgCtx.fillStyle = PALETTE[3];
+                    bgCtx.fillRect(0, 0, W, H);
+                }
+                
+                if (mode === 'invaders') {
+                    initInvaders();
+                }
+            }
+
+            /** ANIMATION LOOP **/
+            function loop() {
+                if (!isPaused) {
+                    updatePattern();
+                    frameCount++;
+                }
+                animationId = requestAnimationFrame(loop);
+            }
+
+            function updatePattern() {
+                switch(mode) {
+                    case 'noise':
+                        if (frameCount % (4/speedMultiplier) < 1) { 
+                            const bs = 8;
+                            for (let y = 0; y < H; y += bs) {
+                                for (let x = 0; x < W; x += bs) {
+                                    if(Math.random() > 0.5) { 
+                                        bgCtx.fillStyle = PALETTE[Math.floor(Math.random() * 4)];
+                                        bgCtx.fillRect(x, y, bs, bs);
+                                    }
+                                }
+                            }
+                        }
+                        break;
+
+                    case 'plasma':
+                        state.t += 0.05 * speedMultiplier;
+                        const pw = 60; const ph = 100;
+                        const pImgData = plasmaCtx.createImageData(pw, ph);
+                        const d = pImgData.data;
+                        const palRGB = [[0,0,0], [85,85,85], [170,170,170], [255,255,255]];
+
+                        for(let y=0; y<ph; y++) {
+                            for(let x=0; x<pw; x++) {
+                                const v = Math.sin(x/8.0 + state.t) + Math.sin(y/8.0 - state.t) + Math.sin((x+y)/8.0) + Math.sin(Math.sqrt(x*x + y*y)/5.0 + state.t);     
+                                const map = Math.floor((v + 4) * 0.7); 
+                                const idx = Math.max(0, Math.min(3, map));
+                                const rgb = palRGB[idx];
+                                const ptr = (y * pw + x) * 4;
+                                d[ptr] = rgb[0]; d[ptr+1] = rgb[1]; d[ptr+2] = rgb[2]; d[ptr+3] = 255;
+                            }
+                        }
+                        plasmaCtx.putImageData(pImgData, 0, 0);
+                        bgCtx.drawImage(plasmaCanvas, 0, 0, W, H);
+                        break;
+
+                    case 'checker':
+                        state.t += 2 * speedMultiplier;
+                        const cSize = 40;
+                        const centerX = W/2;
+                        const centerY = H/2;
+                        for (let y = -cSize; y < H; y += cSize) {
+                            for (let x = -cSize; x < W; x += cSize) {
+                                const effX = x + (state.t % cSize);
+                                const effY = y + (state.t % cSize);
+                                const dist = Math.sqrt((effX - centerX)**2 + (effY - centerY)**2);
+                                const idx = (Math.floor(effX/cSize) + Math.floor(effY/cSize) + Math.floor((dist-state.t)/50)) % 4;
+                                bgCtx.fillStyle = PALETTE[Math.abs(idx)];
+                                bgCtx.fillRect(effX, effY, cSize, cSize);
+                            }
+                        }
+                        break;
+
+                    case 'tenprint':
+                        bgCtx.drawImage(bgCanvas, 0, 4 * speedMultiplier, W, H-(4*speedMultiplier), 0, 0, W, H-(4*speedMultiplier));
+                        bgCtx.fillStyle = PALETTE[3];
+                        bgCtx.fillRect(0, H-(4*speedMultiplier), W, 4*speedMultiplier);
+                        const space = 20;
+                        if (frameCount % (5/speedMultiplier) < 1) { 
+                             let y = H - 20;
+                             bgCtx.lineWidth = 4;
+                             for (let x = 0; x < W; x += space) {
+                                const rnd = Math.random();
+                                const colorIdx = Math.floor(Math.random() * 3);
+                                bgCtx.strokeStyle = PALETTE[colorIdx];
+                                bgCtx.beginPath();
+                                if (rnd > 0.5) { bgCtx.moveTo(x, y); bgCtx.lineTo(x + space, y + space); } 
+                                else { bgCtx.moveTo(x + space, y); bgCtx.lineTo(x, y + space); }
+                                bgCtx.stroke();
+                            }
+                        }
+                        break;
+
+                    case 'automata':
+                        bgCtx.drawImage(bgCanvas, 0, 8, W, H-8, 0, 0, W, H-8);
+                        const cols = 60; const cw = W/cols; const ch = 8;
+                        let next = [];
+                        for(let x=0; x<cols; x++) {
+                            bgCtx.fillStyle = PALETTE[state.automataRow[x]];
+                            bgCtx.fillRect(x*cw, H-ch, cw, ch); 
+                            const l = state.automataRow[(x-1+cols)%cols];
+                            const c = state.automataRow[x];
+                            const r = state.automataRow[(x+1)%cols];
+                            next.push((l+c+r)%4);
+                        }
+                        state.automataRow = next;
+                        break;
+
+                    case 'invaders':
+                        bgCtx.fillStyle = PALETTE[3];
+                        bgCtx.fillRect(0,0,W,H); // Clear
+                        
+                        const invSpeed = 1.5 * speedMultiplier;
+                        const pixelSize = 5; // Alien pixel size (5x8 = 40px height)
+                        
+                        // Wiggle animation every 30 frames
+                        const useFrame2 = Math.floor(frameCount / 30) % 2 === 1;
+
+                        state.invaderRows.forEach((row, rIdx) => {
+                            row.y += invSpeed;
+                            if(row.y > H) {
+                                state.invaderRows[rIdx] = createInvaderRow(-60);
+                            }
+                            
+                            row.invaders.forEach((inv, iIdx) => {
+                                let dx = iIdx * 90 + 20; // Spacing
+                                let dy = row.y;
+                                bgCtx.fillStyle = PALETTE[inv.color];
+                                
+                                const spriteData = useFrame2 ? inv.sprite.frame2 : inv.sprite.frame1;
+
+                                for(let r=0; r<8; r++) {
+                                    let val = spriteData[r];
+                                    for(let c=0; c<8; c++) {
+                                        // Check bit 7-c (draw left to right)
+                                        if ((val >> (7-c)) & 1) {
+                                            bgCtx.fillRect(dx + c*pixelSize, dy + r*pixelSize, pixelSize, pixelSize);
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                        break;
+
+                    case 'glitch':
+                        if(frameCount % 6 === 0) {
+                            const h = Math.random() * 50 + 10;
+                            const sy = Math.random() * H;
+                            const dy = Math.random() * H;
+                            bgCtx.drawImage(bgCanvas, 0, sy, W, h, Math.random()*20 - 10, dy, W, h);
+                            bgCtx.globalCompositeOperation = 'xor';
+                            bgCtx.fillStyle = PALETTE[Math.floor(Math.random()*2)];
+                            bgCtx.fillRect(0, dy, W, h);
+                            bgCtx.globalCompositeOperation = 'source-over';
+                        }
+                        if(frameCount % 10 === 0) {
+                             const x = Math.random() * W; const y = Math.random() * H;
+                             const w = Math.random() * 100; const h = Math.random() * 100;
+                             bgCtx.fillStyle = PALETTE[Math.floor(Math.random()*4)];
+                             bgCtx.fillRect(x,y,w,h);
+                        }
+                        break;
+
+                    case 'dither':
+                        state.t += 0.02 * speedMultiplier;
+                        for(let y=0; y<H; y+=8) {
+                            for(let x=0; x<W; x+=8) {
+                                const v = (y/H + state.t) % 1.0;
+                                let ci;
+                                const rnd = Math.random();
+                                if(v<0.25) ci = rnd>(v*4)?0:1;
+                                else if(v<0.5) ci = rnd>((v-0.25)*4)?1:2;
+                                else if(v<0.75) ci = rnd>((v-0.5)*4)?2:3;
+                                else ci = 3;
+                                bgCtx.fillStyle = PALETTE[ci];
+                                bgCtx.fillRect(x,y,8,8);
+                            }
+                        }
+                        break;
+                }
+            }
+
+
+            /** EVENT LISTENERS **/
+            function setupEventListeners() {
+                // Drawing Canvas Events
+                drawCanvas.addEventListener('mousedown', startDraw);
+                drawCanvas.addEventListener('mousemove', draw);
+                drawCanvas.addEventListener('mouseup', endDraw);
+                drawCanvas.addEventListener('mouseleave', endDraw);
+                drawCanvas.addEventListener('touchstart', startDraw, { passive: false });
+                drawCanvas.addEventListener('touchmove', draw, { passive: false });
+                drawCanvas.addEventListener('touchend', endDraw);
+
+                // Menu
+                els.menuToggle.addEventListener('click', openMenu);
+                els.closeMenu.addEventListener('click', closeMenuFn);
+                els.menuOverlay.addEventListener('click', (e) => {
+                    if (e.target === els.menuOverlay) closeMenuFn();
+                });
+
+                // Mode Select
+                els.genBtns.querySelectorAll('button').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        animateBtn(btn);
+                        setMode(btn.dataset.gen);
+                        closeMenuFn();
+                        showToast(`Mode: ${btn.dataset.gen.toUpperCase()}`);
+                    });
+                });
+
+                // Brush Select
+                els.brushBtns.querySelectorAll('button').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        currentBrushIndex = parseInt(btn.dataset.brush);
+                        showToast(`Brush: Shade ${currentBrushIndex + 1}`);
+                    });
+                });
+
+                // Controls
+                els.btnClear.addEventListener('click', () => {
+                    drawCtx.clearRect(0,0,W,H);
+                    closeMenuFn();
+                    showToast('Drawing Cleared');
+                });
+
+                els.btnExport.addEventListener('click', exportBMP);
+                els.btnText.addEventListener('click', stampText);
+                
+                els.btnPause.addEventListener('click', () => {
+                    isPaused = !isPaused;
+                    els.btnPause.textContent = isPaused ? "PLAY" : "PAUSE";
+                    els.btnPause.classList.toggle('bg-red-900', isPaused);
+                });
+
+                els.btnSpeed.addEventListener('click', () => {
+                    if (speedMultiplier === 1) speedMultiplier = 2;
+                    else if (speedMultiplier === 2) speedMultiplier = 0.5;
+                    else speedMultiplier = 1;
+                    els.btnSpeed.textContent = `Speed: ${speedMultiplier}x`;
+                });
+
+                // Modal
+                els.btnModalClose.addEventListener('click', () => {
+                    els.exportModal.classList.add('opacity-0', 'pointer-events-none');
+                    isPaused = false;
+                });
+            }
+
+            function animateBtn(btn) {
+                btn.classList.add('btn-active');
+                setTimeout(() => btn.classList.remove('btn-active'), 150);
+            }
+
+            /** DRAWING LOGIC (On Overlay Canvas) **/
+            function getPos(e) {
+                const rect = drawCanvas.getBoundingClientRect();
+                const cx = e.touches ? e.touches[0].clientX : e.clientX;
+                const cy = e.touches ? e.touches[0].clientY : e.clientY;
+                const scaleX = W / rect.width;
+                const scaleY = H / rect.height;
+                return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+            }
+
+            function startDraw(e) {
+                isDrawing = true;
+                const pos = getPos(e);
+                lastX = pos.x; lastY = pos.y;
+                draw(e);
+            }
+
+            function draw(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const pos = getPos(e);
+                drawCtx.fillStyle = PALETTE[currentBrushIndex];
+                const size = 20;
+                const dist = Math.hypot(pos.x - lastX, pos.y - lastY);
+                const steps = Math.ceil(dist / (size / 2));
+                for(let i=0; i<=steps; i++) {
+                    const t = steps === 0 ? 0 : i / steps;
+                    const x = lastX + (pos.x - lastX) * t;
+                    const y = lastY + (pos.y - lastY) * t;
+                    const gx = Math.floor(x / 10) * 10;
+                    const gy = Math.floor(y / 10) * 10;
+                    drawCtx.fillRect(gx - size/2, gy - size/2, size, size);
+                }
+                lastX = pos.x; lastY = pos.y;
+            }
+
+            function endDraw() { isDrawing = false; }
+
+            /** TEXT STAMP **/
+            function stampText() {
+                const text = els.textInput.value.toUpperCase() || "HELLO";
+                drawCtx.save();
+                drawCtx.translate(W/2, H/2);
+                drawCtx.font = "bold 60px 'Courier New', monospace";
+                drawCtx.textAlign = "center";
+                drawCtx.textBaseline = "middle";
+                
+                // Contrast Outline
+                const contrastIdx = currentBrushIndex < 2 ? 3 : 0;
+                drawCtx.strokeStyle = PALETTE[contrastIdx];
+                drawCtx.lineWidth = 8;
+                drawCtx.strokeText(text, 0, 0);
+                
+                drawCtx.fillStyle = PALETTE[currentBrushIndex];
+                drawCtx.fillText(text, 0, 0);
+                drawCtx.restore();
+                
+                els.textInput.value = '';
+                closeMenuFn();
+                showToast('Text Stamped');
+            }
+
+            /** EXPORT BMP **/
+            function exportBMP() {
+                isPaused = true;
+                showToast('Capturing...');
+                closeMenuFn();
+
+                setTimeout(() => {
+                    const tempC = document.createElement('canvas');
+                    tempC.width = W;
+                    tempC.height = H;
+                    const tempCtx = tempC.getContext('2d');
+                    tempCtx.drawImage(bgCanvas, 0, 0);
+                    tempCtx.drawImage(drawCanvas, 0, 0);
+                    
+                    const width = W, height = H;
+                    const padding = (4 - (width * 3) % 4) % 4;
+                    const headerSize = 54;
+                    const fileSize = headerSize + (width * 3 + padding) * height;
+
+                    const buffer = new ArrayBuffer(fileSize);
+                    const view = new DataView(buffer);
+                    const bytes = new Uint8Array(buffer);
+                    const imgData = tempCtx.getImageData(0, 0, width, height).data;
+
+                    view.setUint16(0, 0x4D42, true); 
+                    view.setUint32(2, fileSize, true);
+                    view.setUint32(10, headerSize, true); 
+                    view.setUint32(14, 40, true); 
+                    view.setInt32(18, width, true);
+                    view.setInt32(22, height, true);
+                    view.setUint16(26, 1, true); 
+                    view.setUint16(28, 24, true); 
+                    view.setUint32(30, 0, true); 
+                    view.setUint32(34, 0, true); 
+                    view.setInt32(38, 2835, true); 
+                    view.setInt32(42, 2835, true); 
+
+                    let ptr = headerSize;
+                    for (let y = height - 1; y >= 0; y--) {
+                        let rowStart = y * width * 4;
+                        for (let x = 0; x < width; x++) {
+                            let i = rowStart + (x * 4);
+                            bytes[ptr++] = imgData[i + 2]; 
+                            bytes[ptr++] = imgData[i + 1]; 
+                            bytes[ptr++] = imgData[i];     
+                        }
+                        ptr += padding;
+                    }
+
+                    const blob = new Blob([buffer], { type: 'image/bmp' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    els.exportImg.src = url;
+                    els.btnModalDownload.href = url;
+                    els.btnModalDownload.download = `snapshot_${Date.now()}.bmp`;
+                    
+                    els.exportModal.classList.remove('opacity-0', 'pointer-events-none');
+                    showToast('Snapshot Ready');
+                    
+                }, 100);
+            }
+
+            /** MENU HELPERS **/
+            function openMenu() {
+                els.menuOverlay.classList.remove('pointer-events-none', 'opacity-0');
+                els.menuPanel.classList.remove('translate-y-full');
+            }
+            function closeMenuFn() {
+                els.menuOverlay.classList.add('pointer-events-none', 'opacity-0');
+                els.menuPanel.classList.add('translate-y-full');
+            }
+            function showToast(msg) {
+                els.toast.textContent = msg;
+                els.toast.classList.remove('-translate-y-32');
+                setTimeout(() => els.toast.classList.add('-translate-y-32'), 2000);
+            }
+
+            init();
+        })();
+    </script>
+</body>
+</html>
+
+
